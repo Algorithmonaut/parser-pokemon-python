@@ -1,7 +1,4 @@
-# Typescript being a regular language, I still want to parse it without the
 # use of regular expressions using single pass parsing.
-
-# single underscores _ for protected attributes and methods, and double underscores __ for private attributes and methods
 
 from typing import Any, Dict, List, Union
 
@@ -18,6 +15,13 @@ def debug():
         str(len(scanner._pokedex_src[scanner._current_line_number])),
     )
     print("Current line number: " + str(scanner._current_line_number))
+
+
+def find_comment(line: str) -> int:
+    for i, _ in enumerate(line):
+        if line[i : i + 2] == "//":
+            return i
+    return -1
 
 
 class Scanner:
@@ -38,11 +42,18 @@ class Scanner:
                 .replace("\n", "")
                 .replace(" ", "")
             )
+            print(self._pokedex_src[i])
+            comment_index = find_comment(self._pokedex_src[i])
+            if comment_index != -1:
+                self._pokedex_src[i] = self._pokedex_src[i][
+                    : find_comment(self._pokedex_src[i])
+                ]
+                print(self._pokedex_src[i])
 
     def scan_lines(self) -> Dict[str, Dict[str, Any]]:
         for line in self._pokedex_src:
             # The first line is the ds declaration
-            if self._current_line_number > 0 and line != "":
+            if self._current_line_number > 0:
                 self._scan_line(line)
 
             self._current_line_number += 1
@@ -51,7 +62,7 @@ class Scanner:
         return self._pokedex_readable
 
     def _scan_line(self, line: str) -> None:
-        if line == "},":
+        if line == "}," or line == "":
             return
 
         if line[-1] == "{":
@@ -62,20 +73,19 @@ class Scanner:
             return
 
         property_identifier = self._get_identifier(line)
-        print(str(scanner._current))
         self._advance()
         self._stick_current()
-        print(str(scanner._current))
 
-        # elif line[0] == "[":
-        #     self._commit_prop_list()
         # elif line[0] == "{":
         #     self._commit_prop_map()
-        print("[DEBUG] " + line)
-        if self._is_digit(line[scanner._current]) or line[scanner._current] == "-":
+        if self._is_digit(self._peek()) or (
+            self._peek() == "-" and self._is_digit(self._peek_next())
+        ):
             value = self._get_number(line)
-        elif line[scanner._current] == '"':
+        elif self._peek() == '"':
             value = self._get_str(line)
+        elif self._peek() == "[":
+            value = self._get_list()
         else:
             return
             error("Unable to infer type")
@@ -100,7 +110,7 @@ class Scanner:
     ############################################################################
 
     def _is_at_EOL(self) -> bool:
-        return self._current >= len(self._pokedex_src[self._current_line_number])
+        return self._current >= len(self._pokedex_src[self._current_line_number]) - 1
 
     def _is_digit(self, char: str) -> bool:
         assert len(char) == 1
@@ -121,7 +131,6 @@ class Scanner:
 
     def _peek(self):
         if self._is_at_EOL():
-            print("This is anormal")
             return "\0"
         return self._pokedex_src[self._current_line_number][self._current]
 
@@ -144,29 +153,49 @@ class Scanner:
 
         while self._is_digit(self._peek()):
             self._advance()
-        if self._peek() == "." and self._is_digit(self._peek_next()):
+        if self._peek() == ".":
             is_float = True
+            self._advance()
         while self._is_digit(self._peek()):
             self._advance()
 
-        print(line[self._start : self._current] + " -----------------")
-
+        number_str: str = line[self._start : self._current]
+        print(number_str)
         if is_float:
-            return float(line[self._start : self._current])
-        return int(line[self._start : self._current])
+            return float(number_str)
+        return int(number_str)
 
     def _get_str(self, line) -> str:
+        self._advance()
         while self._peek() != '"' and not self._is_at_EOL():
             self._advance()
         if self._is_at_EOL():
             error("Unterminated string")
 
-        return line[self._start : self._current]
+        return line[self._start + 1 : self._current]
+
+    def _get_list(self) -> List[str]:
+        array = []
+        while self._peek() != "]":
+            self._advance()
+
+            if self._is_at_EOL():
+                self._current_line_number += 1
+                self._current, self._start = 0, 0
+                self._stick_current()
+                continue
+
+            if self._peek() == ",":
+                array.append(
+                    self._pokedex_src[self._current_line_number][
+                        self._start + 2 : self._current - 1
+                    ]
+                )
+                self._stick_current()
+
+        return array
 
     def _get_map(self):
-        pass
-
-    def _get_list(self):
         pass
 
     def _get_identifier(self, line: str) -> str:
