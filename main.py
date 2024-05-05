@@ -7,7 +7,17 @@ from typing import Any, Dict, List, Union
 
 
 def error(error: str):
-    print(error + ", line " + str(scanner.get_current_line_number))
+    print(error + ", line " + str(scanner.get_current_line_number()))
+    exit(1)
+
+
+def debug():
+    print('Current line: "' + scanner._pokedex_src[scanner._current_line_number] + '"')
+    print(
+        "Current line length: ",
+        str(len(scanner._pokedex_src[scanner._current_line_number])),
+    )
+    print("Current line number: " + str(scanner._current_line_number))
 
 
 class Scanner:
@@ -20,13 +30,19 @@ class Scanner:
 
     def __init__(self, source_file) -> None:
         self._pokedex_src = source_file.readlines()
-        for line in self._pokedex_src:
-            line.replace("\t", "").replace("\n", "").replace(" ", "")
+        self._pokedex_readable = {}
+        for i in range(len(self._pokedex_src)):
+            self._pokedex_src[i] = (
+                self._pokedex_src[i]
+                .replace("\t", "")
+                .replace("\n", "")
+                .replace(" ", "")
+            )
 
     def scan_lines(self) -> Dict[str, Dict[str, Any]]:
         for line in self._pokedex_src:
             # The first line is the ds declaration
-            if self._current_line_number > 0:
+            if self._current_line_number > 0 and line != "":
                 self._scan_line(line)
 
             self._current_line_number += 1
@@ -35,25 +51,37 @@ class Scanner:
         return self._pokedex_readable
 
     def _scan_line(self, line: str) -> None:
-        if line[len(line) - 1] == "{":
+        if line == "},":
+            return
+
+        if line[-1] == "{":
             self._current_pokemon_identifier = self._get_identifier(line)
+
+            if self._current_pokemon_identifier not in self._pokedex_readable:
+                self._pokedex_readable[self._current_pokemon_identifier] = {}
             return
 
         property_identifier = self._get_identifier(line)
+        print(str(scanner._current))
         self._advance()
+        self._stick_current()
+        print(str(scanner._current))
 
         # elif line[0] == "[":
         #     self._commit_prop_list()
         # elif line[0] == "{":
         #     self._commit_prop_map()
-        if self._is_digit(line[0]):
+        print("[DEBUG] " + line)
+        if self._is_digit(line[scanner._current]) or line[scanner._current] == "-":
             value = self._get_number(line)
-        elif line[0] == '"':
+        elif line[scanner._current] == '"':
             value = self._get_str(line)
         else:
+            return
             error("Unable to infer type")
             value = None
 
+        debug()
         print(
             self._current_pokemon_identifier
             + " - "
@@ -93,17 +121,18 @@ class Scanner:
 
     def _peek(self):
         if self._is_at_EOL():
+            print("This is anormal")
             return "\0"
-        return self._pokedex_src[self._current]
+        return self._pokedex_src[self._current_line_number][self._current]
 
     def _peek_next(self) -> str:
         if self._current + 1 >= len(self._pokedex_src):
             return "\0"
-        return self._pokedex_src[self._current + 1]
+        return self._pokedex_src[self._current_line_number][self._current + 1]
 
-    def _advance(self) -> str:
+    def _advance(self):  # -> str:
         self._current += 1
-        return self._pokedex_src[self._current]
+        # return self._pokedex_src[self._current_line_number][self._current]
 
     def _stick_current(self) -> None:
         self._start = self._current
@@ -119,6 +148,8 @@ class Scanner:
             is_float = True
         while self._is_digit(self._peek()):
             self._advance()
+
+        print(line[self._start : self._current] + " -----------------")
 
         if is_float:
             return float(line[self._start : self._current])
